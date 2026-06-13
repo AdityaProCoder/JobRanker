@@ -77,18 +77,12 @@ MAX_TEXT_CHARS = 4000  # BM25 memory control
 
 
 def _tokenize(text: str) -> List[str]:
+    """Unigram tokenization only. Bigrams removed because they reward
+    keyword-stuffing honeypot profiles that pack AI buzzwords densely."""
     if not text:
         return []
     text = text.lower().translate(_TR_TABLE)
-    base = _TOKEN_RE.findall(text)
-    # Bigrams over the *unigram* skill-like tokens boost BM25 precision
-    # for short queries. Limited to first 200 tokens for speed.
-    if len(base) >= 2:
-        limit = min(len(base), 200)
-        extra = [f"{base[i]}_{base[i + 1]}" for i in range(limit - 1)]
-    else:
-        extra = []
-    return base + extra
+    return _TOKEN_RE.findall(text)
 
 
 def _build_text_corpus(c: Dict) -> str:

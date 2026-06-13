@@ -295,3 +295,96 @@ HONEYPOT_HARD_EXCLUDE = 0.5
 
 # Reasoning template rotation
 REASONING_TEMPLATE_COUNT = 15
+
+# ---------------------------------------------------------------------------
+# JD-criticality weighting (for skill feature engineering)
+# ---------------------------------------------------------------------------
+
+JD_CRITICAL: set[str] = {
+    # The JD's "absolutely need" — weight 2.0
+    "RAG", "Retrieval Augmented Generation",
+    "FAISS", "Pinecone", "Weaviate", "Qdrant", "Milvus",
+    "OpenSearch", "Elasticsearch",
+    "BM25", "Hybrid Search", "Dense Retrieval",
+    "Sentence Transformers", "BGE", "E5", "Embeddings",
+    "Learning to Rank", "LambdaRank", "NDCG", "MRR", "MAP",
+    "XGBoost", "LightGBM", "CatBoost",
+    "PyTorch", "Transformers", "LLM", "Fine-tuning", "LoRA", "QLoRA", "PEFT",
+    "Prompt Engineering", "Hugging Face", "HuggingFace",
+    "Vector Database", "Vector Databases",
+}
+JD_NICE_TO_HAVE: set[str] = {
+    # JD "nice to have" — weight 1.0
+    "Kubernetes", "Docker", "AWS", "GCP", "Azure", "Python",
+    "MLOps", "ML Ops", "MLflow", "Kubeflow",
+    "Triton", "TensorRT", "ONNX",
+    "Distributed Systems", "Inference", "Evaluation",
+    "A/B Testing", "A/B Test", "Experimentation",
+    "NLP", "Computer Vision",
+    "Recommendation", "Recommendation Systems", "Search", "Ranking",
+    "RecSys", "LlamaIndex", "LangChain", "LangGraph",
+    "Open Source", "Open-Source",
+}
+
+# ---------------------------------------------------------------------------
+# Multi-axis PPR: 5 JD axes
+# ---------------------------------------------------------------------------
+
+JD_AXES: dict[str, list[str]] = {
+    "applied_ml": [
+        "PyTorch", "TensorFlow", "Transformers", "Hugging", "LLM", "LoRA",
+        "QLoRA", "PEFT", "Fine-tuning", "Fine-Tuning", "Prompt Engineering",
+        "NLP", "scikit-learn",
+    ],
+    "retrieval_rank": [
+        "FAISS", "Pinecone", "Weaviate", "Qdrant", "Milvus", "OpenSearch",
+        "Elasticsearch", "BM25", "Hybrid Search", "Dense Retrieval",
+        "Learning to Rank", "LambdaRank", "NDCG", "MRR", "MAP",
+        "XGBoost", "LightGBM", "CatBoost",
+        "Sentence Transformers", "BGE", "E5", "Embeddings",
+    ],
+    "nlp_llm": [
+        "LLM", "Fine-tuning", "LoRA", "QLoRA", "PEFT", "Prompt Engineering",
+        "RAG", "Retrieval Augmented Generation", "Vector Database",
+        "LangChain", "LlamaIndex", "LangGraph", "NLP", "Transformers",
+    ],
+    "production_eng": [
+        "Kubernetes", "Docker", "AWS", "GCP", "Azure", "Distributed Systems",
+        "MLOps", "MLflow", "Kubeflow", "Triton", "TensorRT", "ONNX",
+        "Inference", "Evaluation",
+    ],
+    "product_company": [
+        "Razorpay", "Zerodha", "CRED", "PhonePe", "Paytm", "Swiggy", "Zomato",
+        "Ola", "Flipkart", "Meesho", "Urban Company", "Dream11", "Groww",
+        "Cars24", "Postman", "Freshworks", "Zoho", "Chargebee", "BrowserStack",
+        "Sprinklr", "CleverTap", "MoEngage", "ShareChat", "InMobi",
+        "Microsoft", "Google", "Meta", "Amazon", "Apple", "Netflix",
+        "Stripe", "Airbnb", "Uber", "LinkedIn", "Salesforce", "Adobe",
+        "NVIDIA", "Snowflake", "Databricks",
+        "OpenAI", "Anthropic", "Cohere", "Hugging Face",
+        "Pinecone", "Weaviate", "Qdrant",
+    ],
+}
+
+# ---------------------------------------------------------------------------
+# Company tier (for company-quality feature)
+# ---------------------------------------------------------------------------
+
+COMPANY_TIER: dict[int, set[str]] = {
+    3: {
+        "Google", "Meta", "Microsoft", "Amazon", "Apple", "Netflix",
+        "Stripe", "Airbnb", "Uber", "LinkedIn",
+        "Salesforce", "Adobe", "NVIDIA", "Snowflake", "Databricks",
+        "OpenAI", "Anthropic", "Cohere", "Hugging Face",
+        "Pinecone", "Weaviate", "Qdrant",
+    },
+    2: {
+        "Razorpay", "Zerodha", "CRED", "PhonePe", "Paytm",
+        "Swiggy", "Zomato", "Flipkart", "Meesho", "Urban Company",
+        "Postman", "Freshworks", "Zoho", "Chargebee",
+        "BrowserStack", "Sprinklr", "CleverTap", "MoEngage", "ShareChat",
+        "InMobi", "Dream11", "Groww", "Cars24",
+        "Ola", "Rivigo", "Delhivery", "Udaan", "Oyo",
+        "Intel", "IBM", "Oracle", "Redrob",
+    },
+}

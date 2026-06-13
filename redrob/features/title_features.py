@@ -105,3 +105,44 @@ def title_fit_features(df: pd.DataFrame) -> pd.DataFrame:
         ],
     })
     return out
+
+
+# ---------------------------------------------------------------------------
+# Company tier (0-3)
+# ---------------------------------------------------------------------------
+
+def _company_tier(name: str) -> int:
+    """Map company name to tier. 3=FAANG+top-AI, 2=strong product, 1=other, 0=unknown."""
+    name = (name or "").strip()
+    if not name:
+        return 0
+    nl = name.lower()
+    for tier in (3, 2):
+        for c in config.COMPANY_TIER.get(tier, set()):
+            if c.lower() in nl or nl in c.lower():
+                return tier
+    # IT services
+    for svc in config.IT_SERVICES_PURE_PLAY:
+        if svc.lower() in nl:
+            return 0
+    return 1  # unknown product/startup
+
+
+def company_tier_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Company tier features: current tier, max tier across career, top-tier flags."""
+    def _tier_from_list(lst):
+        if lst is None:
+            return []
+        if hasattr(lst, "tolist"):
+            lst = lst.tolist()
+        return [_company_tier(c) for c in (lst or [])]
+
+    current_tier = [_company_tier(c) for c in df["current_company"].fillna("").tolist()]
+    max_tiers = [max(_tier_from_list(lst)) for lst in df["career_companies"].tolist()]
+
+    return pd.DataFrame({
+        "company_tier_current": current_tier,
+        "company_tier_max": max_tiers,
+        "is_top_tier_company": [1 if t >= 3 else 0 for t in max_tiers],
+        "is_product_company_v2": [1 if t >= 1 else 0 for t in max_tiers],
+    })

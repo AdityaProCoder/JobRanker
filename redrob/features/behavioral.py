@@ -58,15 +58,20 @@ def recruitability_features(df: pd.DataFrame) -> pd.DataFrame:
     offer_acceptance = np.array([float(get(r, "offer_acceptance_rate", -1.0)) for _, r in df.iterrows()])
     github = np.array([float(get(r, "github_activity_score", -1.0)) for _, r in df.iterrows()])
 
-    # Recency: 1.0 if active within 30 days, linear decay to 0 at 365 days
+    # Recency: anchored to fixed reference date for determinism.
+    # Reference = 2026-06-01 (near dataset creation date).
+    # 90-day half-life exponential decay.
+    from datetime import datetime as _dt
+    _REF_DATE = _dt(2026, 6, 1)
     recency = np.zeros(n)
     for i, (_, r) in enumerate(df.iterrows()):
         d = _to_dt(get(r, "last_active_date", None))
         if d is None:
             recency[i] = 0.0
             continue
-        days = (datetime.utcnow() - d).days
-        recency[i] = max(0.0, 1.0 - max(0, days - 30) / 335.0)
+        days = (_REF_DATE - d).days
+        import math
+        recency[i] = max(0.0, math.exp(-max(0, days) / 90.0))
 
     # Notice period
     notice_ok = np.where(notice <= 30, 1.0, np.maximum(0.0, 1.0 - (notice - 30) / 150.0))

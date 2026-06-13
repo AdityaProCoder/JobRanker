@@ -180,3 +180,67 @@ if __name__ == "__main__":
     print("purity range:", purity.min(), purity.max())
     print("rarity range:", rarity.min(), rarity.max())
     print("degree range:", deg.min(), deg.max())
+
+
+# ---------------------------------------------------------------------------
+# Career evidence score: lexical signal for "shipped ranking/search/recsys"
+# ---------------------------------------------------------------------------
+
+import re as _re
+
+_SHIP_RE = _re.compile(
+    r"\b(built|shipped|launched|migrated|scaled|deployed|productionized|"
+    r"productionised|architected|led|owned|drove|designed|implemented|"
+    r"integrated|rolled out|from zero|to millions|million users|100x|10x)\b",
+    _re.IGNORECASE,
+)
+_RETRIEVAL_RE = _re.compile(
+    r"\b(ranking|ranker|search|retrieval|recommendation|recommender|recsys|"
+    r"ranking system|search system|recommendation system|vector search|"
+    r"hybrid search|elasticsearch|opensearch|faiss|pinecone|weaviate|qdrant|"
+    r"milvus|bm25|embeddings|semantic|learning to rank|learning-to-rank|"
+    r"lambda|lambdarank|ndcg|mrr|map|a/?b|ab test|ab testing|online evaluation|"
+    r"offline evaluation|click.?through|ctr|engagement)\b",
+    _re.IGNORECASE,
+)
+
+
+def career_evidence_score(df: pd.DataFrame) -> np.ndarray:
+    """Lexical score for 'shipped ranking/search/recsys at scale' evidence.
+
+    JD says: "has shipped at least one end-to-end ranking, search, or
+    recommendation system to real users at meaningful scale."
+    We check career descriptions for ship verbs AND retrieval keywords.
+    """
+    out = np.zeros(len(df), dtype=np.float32)
+    df_r = df.reset_index(drop=True)
+
+    def _as_list(v):
+        if v is None:
+            return []
+        if hasattr(v, "tolist"):
+            v = v.tolist()
+        return v if isinstance(v, list) else []
+
+    for i in range(len(df_r)):
+        career = _as_list(df_r.iloc[i].get("career"))
+        if not career:
+            out[i] = 0.0
+            continue
+        # Check last 3 roles
+        recent = career[-3:]
+        n_ship = 0
+        n_ret = 0
+        total = len(recent)
+        for ch in recent:
+            desc = ((ch.get("description") or "") + " " + (ch.get("title") or "")).lower()
+            if _SHIP_RE.search(desc):
+                n_ship += 1
+            if _RETRIEVAL_RE.search(desc):
+                n_ret += 1
+        if total == 0:
+            out[i] = 0.0
+            continue
+        # Score: system match (60%) + ship verb (40%), averaged over roles
+        out[i] = float(min(1.0, 0.6 * (n_ret / total) * 2 + 0.4 * (n_ship / total) * 2))
+    return out

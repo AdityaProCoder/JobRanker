@@ -17,10 +17,11 @@ import pandas as pd
 from .. import config
 from ..blueprint import build_blueprint
 from ..data import load_or_build_parquet
-from ..graph.coherence import career_coherence_scores, skill_community_features
-from ..graph.propagate import personalised_pagerank
+from ..graph.coherence import career_coherence_scores, career_evidence_score, skill_community_features
+from ..graph.propagate import personalised_pagerank, ppr_axes
 from ..features import (
     title_fit_features,
+    company_tier_features,
     recruitability_features,
     honeypot_features,
     skill_features,
@@ -40,6 +41,20 @@ def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["ppr_score"] = df["candidate_id"].map(lambda c: ppr.get(f"cand::{c}", 0.0))
 
+    # 1b) Multi-axis PPR: 5 specialised axes for better discrimination
+    ppr_ax = ppr_axes()
+    for axis_name, axis_scores in ppr_ax.items():
+        df[f"ppr_{axis_name}"] = df["candidate_id"].map(
+            lambda c, ax=axis_scores: ax.get(f"cand::{c}", 0.0)
+        )
+    # Derived: best axis score, mean, and std (breadth of fit)
+    ppr_axis_cols = [f"ppr_{a}" for a in ppr_ax.keys()]
+    if ppr_axis_cols:
+        ppr_vals = df[ppr_axis_cols].astype(float)
+        df["ppr_max_axis"] = ppr_vals.max(axis=1)
+        df["ppr_axis_mean"] = ppr_vals.mean(axis=1)
+        df["ppr_axis_std"] = ppr_vals.std(axis=1)
+
     # 2) Skill community features
     purity, rarity, degree = skill_community_features(df)
     df["skill_community_purity"] = purity
@@ -49,9 +64,16 @@ def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
     # 3) Career coherence
     df["career_coherence"] = career_coherence_scores(df)
 
+    # 3b) Career evidence: shipped ranking/search/recsys signal
+    df["career_evidence"] = career_evidence_score(df)
+
     # 4) Title features
     tfeat = title_fit_features(df).reset_index(drop=True)
     df = pd.concat([df.reset_index(drop=True), tfeat], axis=1)
+
+    # 4b) Company tier
+    ctier = company_tier_features(df).reset_index(drop=True)
+    df = pd.concat([df.reset_index(drop=True), ctier], axis=1)
 
     # 5) Behavioral
     bfeat = recruitability_features(df).reset_index(drop=True)
@@ -64,6 +86,49 @@ def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
     # 7) Skill features
     sfeat = skill_features(df).reset_index(drop=True)
     df = pd.concat([df, sfeat], axis=1)
+
+    # 7b) Negative-specification flags (JD "do NOT want") — after skill features for n_core_skills
+    yoe_arr = df["yoe"].astype(float).to_numpy()
+
+    def _as_list_local(v):
+        if v is None:
+            return []
+        if hasattr(v, "tolist"):
+            return v.tolist()
+        return v if isinstance(v, list) else []
+
+    # Compute avg tenure and n_titles directly
+    avg_ten_arr = np.zeros(len(df), dtype=float)
+    n_tit_arr = np.zeros(len(df), dtype=np.int32)
+    is_consulting_only_arr = np.zeros(len(df), dtype=np.float32)
+    for i in range(len(df)):
+        ch = _as_list_local(df.iloc[i].get("career"))
+        durs = [int(c.get("duration_months") or 0) for c in ch]
+        durs = [d for d in durs if d > 0]
+        avg_ten_arr[i] = sum(durs) / len(durs) if durs else 0.0
+        ht = _as_list_local(df.iloc[i].get("career_titles"))
+        n_tit_arr[i] = len(ht)
+        companies = _as_list_local(df.iloc[i].get("career_companies"))
+        is_consulting_only_arr[i] = float(
+            all((c or "").strip() in config.IT_SERVICES_PURE_PLAY for c in companies)
+            if companies else False
+        )
+
+    is_title_chaser = ((avg_ten_arr < 18.0) & (n_tit_arr >= 4) & (yoe_arr >= 5.0)).astype(np.float32)
+
+    # Framework enthusiast: >= 2 LangChain/LlamaIndex + low JD-core
+    n_core_arr_val = df["n_core_skills"].astype(float).to_numpy()
+    _FW_SET = {"langchain", "llamaindex", "langgraph"}
+    fw_score = np.zeros(len(df), dtype=np.float32)
+    for i in range(len(df)):
+        skill_names = _as_list_local(df.iloc[i].get("skill_names"))
+        names_lc = {(s or "").lower() for s in skill_names}
+        fw_score[i] = sum(1 for nm in names_lc if nm in _FW_SET)
+    is_framework_enthusiast = ((fw_score >= 2) & (n_core_arr_val < 3)).astype(np.float32)
+
+    df["is_title_chaser"] = is_title_chaser
+    df["is_consulting_only"] = is_consulting_only_arr
+    df["is_framework_enthusiast"] = is_framework_enthusiast
 
     # 8) Seniority / location / industry features
     df["years_in_ideal_band"] = (
@@ -120,8 +185,12 @@ FEATURE_COLUMNS: List[str] = [
     # retrieval
     "sparse_score", "dense_score", "rrf_score", "structured_hit",
     # graph
-    "ppr_score", "skill_community_purity", "skill_rarity", "graph_degree",
-    "career_coherence",
+    "ppr_score",
+    "ppr_applied_ml", "ppr_retrieval_rank", "ppr_nlp_llm",
+    "ppr_production_eng", "ppr_product_company",
+    "ppr_max_axis", "ppr_axis_mean", "ppr_axis_std",
+    "skill_community_purity", "skill_rarity", "graph_degree",
+    "career_coherence", "career_evidence",
     # title
     "title_weight", "title_history_max_weight", "is_target_title",
     "is_noneng_title", "is_data_platform", "is_data_science", "is_generic_swe",
@@ -131,7 +200,7 @@ FEATURE_COLUMNS: List[str] = [
     "n_advanced_skills", "n_expert_skills", "must_have_coverage",
     "adjacent_coverage", "ai_signal_strength", "assessment_max",
     "assessment_mean", "endorsement_log_mean", "duration_log_mean",
-    "jaccard_core",
+    "jaccard_core", "jd_criticality_score",
     # behavioral
     "recruit_open_to_work", "recruit_response_rate", "recruit_verified",
     "recruit_completeness", "recruit_recency", "recruit_notice_ok",
@@ -143,7 +212,9 @@ FEATURE_COLUMNS: List[str] = [
     "yoe", "years_in_ideal_band", "yoe_log", "preferred_location",
     "country_ok", "willing_to_relocate", "notice_period_days", "notice_log",
     "work_mode_remote", "is_services_company", "is_product_company",
-    "n_industries",
+    "n_industries", "company_tier_current", "company_tier_max",
+    "is_top_tier_company", "is_product_company_v2",
+    "is_title_chaser", "is_consulting_only", "is_framework_enthusiast",
 ]
 
 
@@ -162,7 +233,9 @@ def weak_relevance_label(df: pd.DataFrame) -> np.ndarray:
     title_w = df["title_fit_blend"].astype(float).to_numpy()
     must = df["must_have_coverage"].astype(float).to_numpy()
     ppr = df["ppr_score"].astype(float).to_numpy()
+    ppr_max = df["ppr_max_axis"].astype(float).to_numpy() if "ppr_max_axis" in df.columns else ppr
     coh = df["career_coherence"].astype(float).to_numpy()
+    car_ev = df["career_evidence"].astype(float).to_numpy()
     rec = df["recruitability"].astype(float).to_numpy()
     hp = df["honeypot_penalty"].astype(float).to_numpy()
     jac = df["jaccard_core"].astype(float).to_numpy()
@@ -172,13 +245,15 @@ def weak_relevance_label(df: pd.DataFrame) -> np.ndarray:
     score = (
         5.0 * title_w
         + 2.0 * must
-        + 1.5 * np.log1p(ppr * 1e5)  # log-scaled, since PPR is small
+        + 1.5 * np.log1p(ppr_max * 1e5)  # multi-axis best axis, log-scaled
         + 1.0 * coh
         + 1.0 * rec
         - 3.0 * hp
         + 0.5 * jac
         + 0.5 * np.log1p(yoe) * in_band
         + 0.3 * df["is_product_company"].astype(float).to_numpy()
+        + 1.5 * df["jd_criticality_score"].astype(float).to_numpy()
+        + 0.7 * car_ev
     )
     # Convert to 5-point Likert
     grade = np.zeros(len(df), dtype=np.int32)
@@ -208,10 +283,20 @@ def deterministic_score(df: pd.DataFrame) -> np.ndarray:
     s += 0.3 * df["jaccard_core"].astype(float).to_numpy()
     s += 0.4 * (df["assessment_max"].fillna(0).astype(float).to_numpy() / 100.0)
     s += 0.4 * (df["assessment_mean"].fillna(0).astype(float).to_numpy() / 100.0)
+    # JD-criticality: RAG/FAISS/BM25/evaluation 2× weight
+    s += 1.5 * df["jd_criticality_score"].fillna(0).astype(float).to_numpy()
 
     # Graph
     s += 1.5 * np.log1p(df["ppr_score"].astype(float).to_numpy() * 1e5)
+    # Multi-axis PPR: best axis score + breadth bonus
+    if "ppr_max_axis" in df.columns:
+        max_ax = df["ppr_max_axis"].astype(float).to_numpy()
+        std_ax = df["ppr_axis_std"].astype(float).to_numpy()
+        std_max = std_ax.max() + 1e-9
+        s += 0.6 * np.log1p(max_ax * 1e5)
+        s += 0.3 * (std_ax / std_max)  # breadth of fit bonus
     s += 0.8 * df["career_coherence"].astype(float).to_numpy()
+    s += 0.8 * df["career_evidence"].astype(float).to_numpy()
     s += 0.5 * df["skill_community_purity"].astype(float).to_numpy()
     s += 0.2 * df["skill_rarity"].astype(float).to_numpy()
 
@@ -220,6 +305,11 @@ def deterministic_score(df: pd.DataFrame) -> np.ndarray:
 
     # Honeypot penalty (multiplicative, applied later; here we just subtract)
     s -= 4.0 * df["honeypot_penalty"].astype(float).to_numpy()
+    # JD "do NOT want" soft penalties
+    if "is_title_chaser" in df.columns:
+        s -= 0.6 * df["is_title_chaser"].astype(float).to_numpy()
+        s -= 0.4 * df["is_framework_enthusiast"].astype(float).to_numpy()
+        s -= 0.5 * df["is_consulting_only"].astype(float).to_numpy()
 
     # Seniority & location
     s += 0.4 * df["years_in_ideal_band"].astype(float).to_numpy()
@@ -229,6 +319,10 @@ def deterministic_score(df: pd.DataFrame) -> np.ndarray:
     s -= 0.4 * (df["notice_period_days"].fillna(90).clip(lower=0).astype(float).to_numpy() / 180.0)
     s += 0.3 * df["is_product_company"].astype(float).to_numpy()
     s -= 0.2 * df["is_services_company"].astype(float).to_numpy() * (1.0 - df["must_have_coverage"].astype(float).to_numpy())
+    # Company tier: tier-3 company bonus
+    if "company_tier_max" in df.columns:
+        s += 0.4 * df["company_tier_max"].astype(float).to_numpy() / 3.0
+        s += 0.2 * df["is_top_tier_company"].astype(float).to_numpy()
 
     # Retrieval signals (additive)
     if "rrf_score" in df.columns:

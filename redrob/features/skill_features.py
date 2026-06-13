@@ -10,6 +10,14 @@ from .. import config
 _CORE = {s.lower() for s in config.CORE_COMPETENCIES}
 _ADJ = {s.lower() for s in config.ADJACENT_COMPETENCIES}
 _NEG = {s.lower() for s in config.NEGATIVE_COMPETENCIES}
+_CRIT = {s.lower() for s in config.JD_CRITICAL}
+_NICE = {s.lower() for s in config.JD_NICE_TO_HAVE}
+_SKILL_WEIGHT = {s: 2.0 for s in _CRIT}
+_SKILL_WEIGHT.update({s: 1.0 for s in _NICE})
+for s in _CORE - _CRIT - _NICE:
+    _SKILL_WEIGHT.setdefault(s, 0.5)
+# Max possible weighted score (6 critical + 4 nice-to-have)
+_MAX_WEIGHT = sum(sorted(_SKILL_WEIGHT.values(), reverse=True)[:10])
 
 
 def skill_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -35,6 +43,7 @@ def skill_features(df: pd.DataFrame) -> pd.DataFrame:
     duration_log_mean = np.zeros(n, dtype=np.float32)
     skill_count = np.zeros(n, dtype=np.int32)
     jaccard_core = np.zeros(n, dtype=np.float32)
+    jd_crit_score = np.zeros(n, dtype=np.float32)
 
     for i in range(n):
         skills_full = skills_full_col[i]
@@ -48,6 +57,10 @@ def skill_features(df: pd.DataFrame) -> pd.DataFrame:
         n_neg_hits[i] = len(names_lc & _NEG)
         n_advanced[i] = sum(1 for s in skills_full if s.get("proficiency") in ("advanced",))
         n_expert[i] = sum(1 for s in skills_full if s.get("proficiency") == "expert")
+
+        # JD-criticality weighted score
+        w_sum = sum(_SKILL_WEIGHT.get(n, 0.0) for n in names_lc)
+        jd_crit_score[i] = min(w_sum / max(_MAX_WEIGHT, 1e-9), 1.0)
 
         # Assessments
         sig = sigs_col[i]
@@ -93,4 +106,5 @@ def skill_features(df: pd.DataFrame) -> pd.DataFrame:
         "endorsement_log_mean": endorsement_log_mean,
         "duration_log_mean": duration_log_mean,
         "jaccard_core": jaccard_core,
+        "jd_criticality_score": jd_crit_score,
     })
