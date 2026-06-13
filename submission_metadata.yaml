@@ -1,0 +1,58 @@
+team_name: "redrob-candidate-intel"
+primary_contact:
+  name: "Redrob Candidate Intelligence"
+  email: "team@example.com"
+  phone: "+91-0000000000"
+team_members:
+  - name: "ML Engineer"
+    email: "ml@example.com"
+    role: "ML Engineer"
+  - name: "Data Engineer"
+    email: "data@example.com"
+    role: "Data Engineer"
+
+github_repo: "https://github.com/your-org/redrob-candidate-intelligence"
+sandbox_link: "https://huggingface.co/spaces/your-org/redrob-ranker"
+reproduce_command: "python scripts/run_ranking.py"
+
+compute:
+  platform: "Local Linux box"
+  cpu_cores: 4
+  ram_gb: 16
+  python_version: "3.12"
+  os: "Ubuntu 22.04 LTS"
+  uses_gpu_for_inference: false
+  has_network_during_ranking: false
+  pre_computation_required: false
+  pre_computation_time_minutes: 0
+
+ai_tools_used:
+  - "Claude"
+  - "GitHub Copilot"
+
+ai_usage_summary: |
+  Used Claude for architecture discussion, code review, and
+  iterative debugging. Used Copilot for autocomplete.
+  No candidate data was fed to any LLM during pipeline runs.
+
+methodology_summary: |
+  Hybrid BM25 + sentence-transformers (configurable via
+  REDROB_DENSE_MODEL, with BGE variants supported) retrieval fused
+  by Reciprocal Rank Fusion over a structured high-recall gate.
+  Heterogeneous graph (candidate-skill-title-company-industry) with
+  personalised PageRank over JD seeds and skill-community features.
+  23 Redrob behavioral signals combined into a recruitability score.
+  Ten explicit honeypot rules including title-skill contradictions.
+  Graduated title-fit with heavy penalty for non-engineering
+  titles. LightGBM LambdaRank ranker trained on transparent weak
+  labels, with a deterministic scorer as a robust fallback.
+  Deterministic evidence-driven reasoning templates; no LLM at
+  submission time. End-to-end runs in <=2 minutes on CPU with 16GB
+  RAM and no network.
+
+declarations:
+  read_submission_spec: true
+  code_is_original_work: true
+  no_collusion: true
+  honeypot_check_done: true
+  reproduction_tested: true
