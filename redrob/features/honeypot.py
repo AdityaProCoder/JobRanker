@@ -156,9 +156,11 @@ def honeypot_features(df: pd.DataFrame) -> pd.DataFrame:
             rule_flags["hp_rule_5"][i] = 0.25
             contrib += 0.25
 
-        # Rule 7: title–skill contradiction: lots of advanced AI skills but
-        # current title is clearly non-engineering AND every career title
-        # is non-engineering.
+        # Rule 7 v2: title-skill contradiction (loosened).
+        # Fires when current_title is non-eng AND
+        #   (a) every historical title is non-eng OR
+        #   (b) max assessment >= 80 (unrealistic for non-eng) OR
+        #   (c) career_total_months < yoe * 12 * 0.85 (implausibly short career).
         if adv >= 5:
             non_eng_kw = (
                 "marketing", "hr ", "accountant", "sales ", "graphic", "content writer",
@@ -172,7 +174,22 @@ def honeypot_features(df: pd.DataFrame) -> pd.DataFrame:
                 hist_titles = []
             elif hasattr(hist_titles, "tolist"):
                 hist_titles = hist_titles.tolist()
-            if any(k in cur for k in non_eng_kw) and all(any(k in (t or "").lower() for k in non_eng_kw) for t in hist_titles if t):
+            non_eng_cur = any(k in cur for k in non_eng_kw)
+            all_non_eng_hist = all(any(k in (t or "").lower() for k in non_eng_kw)
+                                    for t in hist_titles if t)
+            # Compute max assessment score
+            max_assess = 0
+            sig = sigs[i]
+            if isinstance(sig, dict):
+                sas = sig.get("skill_assessment_scores") or {}
+                for v in (sas or {}).values():
+                    if isinstance(v, (int, float)) and v > max_assess:
+                        max_assess = v
+            # Career-impossible
+            impossible_career = (
+                yoe[i] > 0 and career_total[i] < yoe[i] * 0.85
+            )
+            if non_eng_cur and (all_non_eng_hist or max_assess >= 80 or impossible_career):
                 rule_flags["hp_rule_6"][i] = 0.30
                 contrib += 0.30
 

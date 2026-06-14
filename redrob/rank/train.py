@@ -229,11 +229,23 @@ def weak_relevance_label(df: pd.DataFrame) -> np.ndarray:
     is a *learning target* that emphasises the role blueprint's
     hard requirements (target title, must-have coverage, low honeypot
     penalty) so the ranker can calibrate.
+
+    Enriched with: multi-axis PPR diversity (breadth), career evidence,
+    company tier. Thresholds biased to be more discriminative at the
+    top end (tier 4) so the LTR learns to distinguish gold candidates.
     """
     title_w = df["title_fit_blend"].astype(float).to_numpy()
     must = df["must_have_coverage"].astype(float).to_numpy()
     ppr = df["ppr_score"].astype(float).to_numpy()
     ppr_max = df["ppr_max_axis"].astype(float).to_numpy() if "ppr_max_axis" in df.columns else ppr
+    # PPR breadth: standard deviation across the 5 axes
+    ppr_axis_cols = [c for c in df.columns
+                     if c.startswith("ppr_") and c not in ("ppr_score", "ppr_max_axis",
+                                                              "ppr_axis_mean", "ppr_axis_std")]
+    if ppr_axis_cols:
+        ppr_breadth = df[ppr_axis_cols].astype(float).std(axis=1).to_numpy()
+    else:
+        ppr_breadth = np.zeros(len(df))
     coh = df["career_coherence"].astype(float).to_numpy()
     car_ev = df["career_evidence"].astype(float).to_numpy()
     rec = df["recruitability"].astype(float).to_numpy()
@@ -242,20 +254,35 @@ def weak_relevance_label(df: pd.DataFrame) -> np.ndarray:
     yoe = df["yoe"].astype(float).to_numpy()
     in_band = df["years_in_ideal_band"].astype(float).to_numpy()
 
+    # Company tier (only if present)
+    if "company_tier_max" in df.columns:
+        ctier = df["company_tier_max"].astype(float).to_numpy()
+    else:
+        ctier = np.zeros(len(df))
+
     score = (
         5.0 * title_w
         + 2.0 * must
         + 1.5 * np.log1p(ppr_max * 1e5)  # multi-axis best axis, log-scaled
+        + 0.8 * ppr_breadth * 1e5         # breadth of fit (axes std)
         + 1.0 * coh
         + 1.0 * rec
         - 3.0 * hp
         + 0.5 * jac
         + 0.5 * np.log1p(yoe) * in_band
+        + 0.5 * ctier / 3.0               # company tier contribution
         + 0.3 * df["is_product_company"].astype(float).to_numpy()
         + 1.5 * df["jd_criticality_score"].astype(float).to_numpy()
         + 0.7 * car_ev
+        # Negative-spec penalties (soft)
+        - 0.8 * (df["is_title_chaser"].astype(float).to_numpy()
+                  if "is_title_chaser" in df.columns
+                  else np.zeros(len(df)))
+        - 0.5 * (df["is_consulting_only"].astype(float).to_numpy()
+                   if "is_consulting_only" in df.columns
+                   else np.zeros(len(df)))
     )
-    # Convert to 5-point Likert
+    # Convert to 5-point Likert (tuned for better discrimination at top)
     grade = np.zeros(len(df), dtype=np.int32)
     grade[score > 2.0] = 1
     grade[score > 3.5] = 2

@@ -95,36 +95,52 @@ def run(args) -> None:
     else:
         print(f"[{time.time()-t_start:5.1f}s] dense path disabled by --no_dense")
 
-    # 5) Structured high-recall gate (soft, not exclusion)
+    # 5) Structured high-recall gate as SOFT score (saturating)
     gate_terms_lc = {t.lower() for t in config.STRUCTURED_GATE_TERMS}
     df_reset = df.reset_index(drop=True)
-    has_text_match = df_reset["text_corpus"].fillna("").str.lower().apply(
-        lambda t: any(g in t for g in gate_terms_lc)
-    )
 
-    def _has_skill_gate(skills):
+    def _gate_text_score(text):
+        if not text:
+            return 0
+        tl = text.lower()
+        n_hits = sum(1 for g in gate_terms_lc if g in tl)
+        return float(min(1.0, n_hits / 5.0))
+
+    def _gate_skill_score(skills):
         if skills is None:
-            return False
+            return 0.0
         if hasattr(skills, "tolist"):
             skills = skills.tolist()
-        return any((s or "").lower() in gate_terms_lc for s in skills)
+        n = sum(1 for s in (skills or []) if (s or "").lower() in gate_terms_lc)
+        return float(min(1.0, n / 3.0))
 
-    has_skill_match = df_reset["skill_names"].apply(_has_skill_gate)
-    structured_hit = (has_text_match | has_skill_match).to_numpy()
-    print(f"[{time.time()-t_start:5.1f}s] structured gate hit on {int(structured_hit.sum()):,}/{len(df):,}")
+    text_scores = df_reset["text_corpus"].fillna("").apply(_gate_text_score).to_numpy()
+    skill_scores = df_reset["skill_names"].apply(_gate_skill_score).to_numpy()
+    gate_score = np.maximum(text_scores, skill_scores)
+    structured_hit = (gate_score > 0.0).astype(np.float32)
+    print(f"[{time.time()-t_start:5.1f}s] structured gate: median score {np.median(gate_score):.2f}, "
+          f"hits {int(structured_hit.sum()):,}/{len(df):,}")
 
-    # 6) RRF over all channels
+    # 6) RRF over all channels with per-channel weights
+    # BM25 (reliable) > structured-gate (binary OK) > dense (noisy in this domain)
     rankings = list(sparse_rankings) + list(dense_rankings)
-    fused = rrf_fuse(rankings, k=config.RRF_K, top_n=config.SHORTLIST_N)
+    if dense_rankings:
+        channel_weights = [1.2] * len(sparse_rankings) + [0.8] * len(dense_rankings)
+    else:
+        channel_weights = [1.0] * len(sparse_rankings)
+    fused = rrf_fuse(rankings, k=config.RRF_K, top_n=config.SHORTLIST_N,
+                     channel_weights=channel_weights)
     shortlist_ids = [cid for cid, _score, _r in fused]
     shortlist_set = set(shortlist_ids)
     if args.verbose:
         print(f"[{time.time()-t_start:5.1f}s] RRF shortlist: {len(shortlist_ids):,}")
 
-    # Add top structured-gate candidates not already in shortlist (up to N)
-    struct_ids = df_reset.loc[structured_hit, "candidate_id"].tolist()
+    # Add top structured-gate candidates not already in shortlist (sorted by gate_score)
+    struct_candidates = df_reset.loc[gate_score > 0.0].copy()
+    struct_candidates = struct_candidates.assign(_g=gate_score[gate_score > 0.0])
+    struct_candidates = struct_candidates.sort_values("_g", ascending=False)
     added = 0
-    for cid in struct_ids:
+    for cid in struct_candidates["candidate_id"].tolist():
         if cid not in shortlist_set:
             shortlist_ids.append(cid)
             shortlist_set.add(cid)
@@ -133,6 +149,8 @@ def run(args) -> None:
                 break
     if args.verbose:
         print(f"[{time.time()-t_start:5.1f}s] +{added:,} from structured gate (total shortlist: {len(shortlist_ids):,})")
+    struct_ids = df_reset.loc[gate_score > 0.0, "candidate_id"].tolist()
+    gate_score_map = {cid: float(s) for cid, s in zip(df_reset["candidate_id"].tolist(), gate_score)}
 
     # 7) Build the shortlist dataframe
     shortlist_df = df_reset[df_reset["candidate_id"].isin(shortlist_set)].copy()
@@ -153,7 +171,7 @@ def run(args) -> None:
     shortlist_df["sparse_score"] = shortlist_df["candidate_id"].map(lambda c: sparse_score_by_id.get(c, 0.0))
     shortlist_df["dense_score"] = shortlist_df["candidate_id"].map(lambda c: dense_score_by_id.get(c, 0.0))
     shortlist_df["rrf_score"] = shortlist_df["candidate_id"].map(lambda c: rrf_score_by_id.get(c, 0.0))
-    shortlist_df["structured_hit"] = shortlist_df["candidate_id"].isin(set(struct_ids)).astype(np.float32)
+    shortlist_df["structured_hit"] = shortlist_df["candidate_id"].map(lambda c: gate_score_map.get(c, 0.0))
 
     print(f"[{time.time()-t_start:5.1f}s] computing features for {len(shortlist_df):,} shortlist candidates")
 

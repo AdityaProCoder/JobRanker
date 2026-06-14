@@ -9,18 +9,24 @@ def rrf_fuse(
     rankings: List[List[Tuple[str, float]]],
     k: int = 60,
     top_n: int | None = None,
+    channel_weights: List[float] | None = None,
 ) -> List[Tuple[str, float, Dict[str, int]]]:
-    """Combine multiple ranked lists using RRF.
+    """Combine multiple ranked lists using weighted RRF.
 
     Each ranking is a list of (id, score). Higher score is better.
-    Returns a single fused list of (id, rrf_score, per_channel_rank).
+    channel_weights lets you weight some channels more (e.g. BM25 1.2,
+    dense 0.8). Returns a single fused list of (id, rrf_score, per_channel_rank).
     """
     fused: Dict[str, float] = defaultdict(float)
     ranks: Dict[str, Dict[str, int]] = defaultdict(dict)
-    for ch_idx, ranking in enumerate(rankings):
+    n_channels = len(rankings)
+    if channel_weights is None:
+        channel_weights = [1.0] * n_channels
+    assert len(channel_weights) == n_channels, "channel_weights must match rankings"
+    for ch_idx, (ranking, w) in enumerate(zip(rankings, channel_weights)):
         ch_name = f"ch{ch_idx}"
         for r, (cid, _score) in enumerate(ranking, start=1):
-            fused[cid] += 1.0 / (k + r)
+            fused[cid] += w / (k + r)
             ranks[cid][ch_name] = r
     items = sorted(fused.items(), key=lambda x: -x[1])
     out: List[Tuple[str, float, Dict[str, int]]] = []
