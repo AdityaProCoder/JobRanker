@@ -133,7 +133,7 @@ def _rank_band(rank: int) -> str:
 _TEMPLATES: Dict[str, List[str]] = {
     # ---- ELITE band (rank 1-5): full glowing praise ----
     "elite_tier3": [
-        "A top-tier product company profile: '{title}' with {_yoe} and a career built around shipping production ML systems at category-leading companies.",
+        "A top-tier product company profile: '{title}' at {company} with {_yoe} and a career built around shipping production ML systems at category-leading companies.",
         "Matched JD core on: {skills}; Redrob assessments: {assess}.",
         "Honest note: {concern}.",
     ],
@@ -143,7 +143,7 @@ _TEMPLATES: Dict[str, List[str]] = {
         "Assessment scores on Redrob: {assess}.",
     ],
     "elite_services": [
-        "An interesting profile: '{title}' with {_yoe} and solid JD-core skill overlap, though current employer is a services firm.",
+        "An interesting profile: '{title}' at {company} with {_yoe} and solid JD-core skill overlap, though current employer is a services firm.",
         "Key skills matching the JD: {skills}. Career progression suggests product-company exposure elsewhere.",
     ],
     "elite_unknown": [
@@ -154,9 +154,26 @@ _TEMPLATES: Dict[str, List[str]] = {
 
     # ---- TOP band (rank 6-10): standard praise ----
     "top_tier3": [
-        "Senior AI Engineer fit: {_yoe}; title '{title}' at a top-tier product company maps cleanly to the JD's applied-ML archetype.",
+        "Senior AI Engineer fit: {_yoe}; title '{title}' at {company} (top-tier product) maps cleanly to the JD's applied-ML archetype.",
         "Direct JD-skill matches: {skills}. Redrob scores: {assess}.",
         "{concern}",
+    ],
+    "top_tier2": [
+        "Strong applied-ML profile: '{title}' at {company} (Indian product company), {_yoe}. Career history shows shipped production ML.",
+        "JD-aligned skills: {skills}. {concern}.",
+    ],
+    "elite_tier2": [
+        "Strong applied-ML profile: '{title}' at {company} (Indian product company), {_yoe}, matching the JD's retrieval and ranking skill requirements.",
+        "JD-aligned skills: {skills}. Assessment scores: {assess}.",
+        "Honest note: {concern}.",
+    ],
+    "mid_tier2": [
+        "Solid mid-rank candidate: '{title}' at {company} (Indian product), {_yoe}. JD-aligned skills present; the concern is {concern}.",
+        "Skills confirmed: {skills}. Active on Redrob with reasonable engagement.",
+    ],
+    "tail_tier2": [
+        "Included at rank {rank}: '{title}' at {company}, {_yoe}. Indian product-company context; {concern} is significant.",
+        "Skill overlap: {skills}.",
     ],
     "top_tier1": [
         "Strong adjacent fit: '{title}' at {company}, {_yoe}. Career history shows applied-ML work covering the JD's core retrieval and ranking requirements.",
@@ -194,7 +211,7 @@ _TEMPLATES: Dict[str, List[str]] = {
 
     # ---- TAIL band (rank 51-100): hedging + graph evidence ----
     "tail_tier3": [
-        "Included at rank {rank}: '{title}', {_yoe}, at {company}. Retrieval skill community membership supports the fit despite {concern}.",
+        "Included at rank {rank}: '{title}' at {company}, {_yoe}. Retrieval skill community membership supports the fit despite {concern}.",
         "Fewer JD-skill hits than the top half: {skills}. Long-shot given the title–skill gap.",
     ],
     "tail_tier1": [
