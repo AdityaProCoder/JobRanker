@@ -211,6 +211,43 @@ def honeypot_features(df: pd.DataFrame) -> pd.DataFrame:
         p[i] = min(contrib, 1.0)
 
     out = pd.DataFrame({"honeypot_penalty": p})
+
+    # Rule 11: behavioral twins (post-pass) — detect candidates whose
+    # (name, current_title, round(yoe,1)) match another candidate and
+    # penalise the weaker-behavior twin. Matches the spec's explicit
+    # "behavioral twins" trap (530 twin-keys, 1,061 candidates).
+    from collections import defaultdict
+    sigs_for_twins = sigs
+    rr_arr = np.array([
+        (s.get("recruiter_response_rate", 0.0) if isinstance(s, dict) else 0.0)
+        for s in sigs_for_twins
+    ], dtype=np.float32)
+    recency_arr = np.array([
+        (s.get("recency_score", s.get("last_active_date_score", 0.5)) if isinstance(s, dict) else 0.5)
+        for s in sigs_for_twins
+    ], dtype=np.float32)
+    names = df["name"].fillna("").astype(str).tolist() if "name" in df.columns \
+            else df["candidate_id"].astype(str).tolist()
+    titles = df["current_title"].fillna("").astype(str).tolist()
+    yoe_round = np.round(yoe, 1)
+    twin_groups: dict = defaultdict(list)
+    for i in range(n):
+        key = (names[i].strip().lower(), titles[i].strip().lower(), float(yoe_round[i]))
+        if key[0] == "":
+            continue
+        twin_groups[key].append(i)
+    twin_penalty = np.zeros(n, dtype=np.float32)
+    for key, idxs in twin_groups.items():
+        if len(idxs) < 2:
+            continue
+        # Pick the strongest twin (highest rr + recency); penalise the rest
+        strengths = rr_arr[idxs] + recency_arr[idxs]
+        order = np.argsort(-strengths)
+        leader = idxs[order[0]]
+        for weaker in [idxs[i] for i in order[1:]]:
+            twin_penalty[weaker] += 0.15
+    out["honeypot_penalty"] = np.minimum(out["honeypot_penalty"].to_numpy() + twin_penalty, 1.0)
+    out["hp_rule_10"] = twin_penalty
     for k, v in rule_flags.items():
         out[k] = v
     return out

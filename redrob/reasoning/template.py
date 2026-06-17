@@ -226,6 +226,11 @@ def _fill_template(tmpl: List[str], row: pd.Series, rank: int) -> List[str]:
     notice = int(row.get("notice_period_days") or 0)
     honeypot = float(row.get("honeypot_penalty") or 0.0)
     rec = float(row.get("recruitability") or 0.0)
+    is_junior = bool(int(row.get("is_junior_title") or 0))
+    in_band = (
+        config.YOE_IDEAL_LOW <= yoe <= config.YOE_IDEAL_HIGH
+        if hasattr(config, "YOE_IDEAL_LOW") else yoe >= 5
+    )
 
     # Build concern clause
     concerns: List[str] = []
@@ -237,6 +242,10 @@ def _fill_template(tmpl: List[str], row: pd.Series, rank: int) -> List[str]:
         concerns.append(f"profile inconsistency signals (penalty {honeypot:.2f})")
     if rec < 0.3:
         concerns.append("low recruiter engagement signals")
+    # Stage 4 honesty: junior title with senior-YOE is a contradiction worth
+    # surfacing for the reviewer (matches the new deterministic penalty).
+    if is_junior and in_band and rank <= 50:
+        concerns.append("junior title despite senior-YOE band — verify level")
     if not concerns:
         concern_str = "no major concerns"
     elif len(concerns) == 1:
