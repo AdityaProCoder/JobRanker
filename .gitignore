@@ -18,3 +18,29 @@ artifacts/
 
 # macOS metadata folders
 __MACOSX/
+
+# Internal research artifacts (not part of the submission)
+autoresearch.md
+autoresearch.sh
+autoresearch.jsonl
+autoresearch_ideas.md
+HANDOFF_SPEC.md
+_dump.py
+_*.*
+tmp/
+scripts/_*.py
+scripts/_check_top100.py
+scripts/_compare_variants.py
+scripts/_deep_review.py
+scripts/_find_elites.py
+scripts/_show_top30.py
+scripts/_recall_check.py
+scripts/_inspect_submission.py
+scripts/_inspect_final.py
+scripts/_final_compare.py
+scripts/_v3v4_compare.py
+scripts/_ltr_hurt_check.py
+scripts/_check_importance.py
+scripts/_diagnose_missing.py
+scripts/_dataset_analysis.py
+scripts/_dataset_analysis2.py

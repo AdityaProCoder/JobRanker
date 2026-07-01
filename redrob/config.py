@@ -177,13 +177,17 @@ TITLE_ROLE_GROUPS: Dict[str, List[str]] = {
 }
 
 # Title weights used by the graduated title fit scorer (target role weight).
+# Updated based on data analysis: Senior Data Scientist with strong JD-core
+# skills (BM25, FAISS, NDCG) at Microsoft/Google is a great fit. Boosted
+# data_science weight from 0.70 to 0.85. Also added product_company tier
+# boosts to capture additional strong-elite candidates.
 TITLE_GROUP_WEIGHT: Dict[str, float] = {
     "applied_ml": 1.00,
     "retrieval_ranking": 0.95,
-    "nlp_llm": 0.85,
-    "data_science": 0.70,
-    "data_platform": 0.55,
-    "generic_swe": 0.40,
+    "nlp_llm": 0.90,
+    "data_science": 0.85,  # boosted: Sr DS w/ strong JD-core skills is a great fit
+    "data_platform": 0.60,
+    "generic_swe": 0.45,
     "non_target": 0.05,
 }
 
@@ -223,6 +227,17 @@ PRODUCT_COMPANY_HINTS = {
     "Redrob", "Redrob AI", "RedrobAI",
     "OpenAI", "Anthropic", "Cohere", "Hugging Face", "HuggingFace",
     "Pinecone", "Weaviate", "Qdrant",
+    # Indian AI-first labs / platforms (extended coverage)
+    "Sarvam", "Sarvam AI", "Niramai", "Rephrase", "Fractal",
+    "Yellow.ai", "Mad Street Den", "Wysa", "Haptik",
+    "Vernacular.ai", "Agnatha", "Aganitha", "Uniphore", "Observe.AI",
+    "Turing", "Turing.com", "Locobuzz", "Verloop", "Verloop.io",
+    "Bobble", "Bobble AI", "Galytix", "Locus", "Locus.sh",
+    "Conv.AI", "Yellow Messenger", "Krutrim",
+    # Ed-tech / health-tech (product companies with AI teams)
+    "BYJU", "BYJUS", "BYJU'S", "Unacademy", "Vedantu", "upGrad",
+    "upGrad", "Simplilearn", "Great Learning", "Eruditus",
+    "PolicyBazaar", "PolicyBazaar.com", "Lendingkart",
 }
 
 # ---------------------------------------------------------------------------
@@ -386,5 +401,13 @@ COMPANY_TIER: dict[int, set[str]] = {
         "InMobi", "Dream11", "Groww", "Cars24",
         "Ola", "Rivigo", "Delhivery", "Udaan", "Oyo",
         "Intel", "IBM", "Oracle", "Redrob",
+        # Indian AI-first labs
+        "Sarvam AI", "Niramai", "Rephrase", "Fractal", "Yellow.ai",
+        "Mad Street Den", "Wysa", "Haptik", "Uniphore", "Observe.AI",
+        "Turing", "Locobuzz", "Verloop", "Bobble AI", "Galytix",
+        "Locus", "Krutrim",
+        # Ed-tech / health-tech (product companies with AI teams)
+        "BYJU", "BYJUS", "Unacademy", "Vedantu", "upGrad",
+        "PolicyBazaar",
     },
 }
