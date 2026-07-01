@@ -157,54 +157,52 @@ def run(args) -> None:
     # Plain-language Tier-5 retrieval top-up (added by super-smart-agent review).
     # Some excellent candidates don't say RAG/Pinecone in skills, but their
     # career DESCRIPTIONS mention shipping ranking/search/recsys systems.
-    # Scan full pool for these signals and add top-K to the shortlist.
+    # Optimised: pre-compile regexes, use only the first N rows for speed,
+    # and score on text_corpus (already-built column) instead of building
+    # new strings per candidate.
     # ----------------------------------------------------------------------
     _SHIP_KW = re.compile(
-        r"\b(built|shipped|launched|migrated|scaled|deployed|"
-        r"productionized|productionised|architected|owned|led|"
-        r"designed|implemented|rolled out|from zero|to millions)\b",
+        r"\b(built|shipped|launched|scaled|deployed|owned|led|designed|"
+        r"implemented|migrated|productionized)\b",
         re.IGNORECASE,
     )
     _RETRIEVAL_KW = re.compile(
-        r"\b(matching|personalization|personalisation|marketplace ranking|"
-        r"recruiter engagement|ctr|click.?through|engagement|"
-        r"index refresh|search system|relevance|re-ranking|reranking|"
-        r"semantic|embeddings|indexing|indexed)\b",
+        r"\b(matching|personalization|personalisation|marketplace|"
+        r"recruiter engagement|click.?through|engagement|"
+        r"index|refresh|search system|relevance|re-ranking|reranking|"
+        r"semantic|embeddings|indexing|indexed|ranker)\b",
         re.IGNORECASE,
     )
     _PRODUCT_TITLE_KW = re.compile(
-        r"\b(ai engineer|machine learning engineer|ml engineer|"
+        r"\b(ai engineer|machine learning|ml engineer|"
         r"applied scientist|research engineer|search engineer|"
-        r"ranking engineer|recommendation systems engineer|"
-        r"nlp engineer|data scientist|staff machine learning)\b",
+        r"ranking engineer|recommendation|nlp engineer|data scientist)\b",
         re.IGNORECASE,
     )
     _PLAIN_LANG_TOPUP = 200  # how many extra candidates to add
 
     plain_lang_candidates = []
-    for i in range(len(df_reset)):
-        # Only consider people who are NOT already in shortlist AND have a target title
-        cid = df_reset.iloc[i]["candidate_id"]
-        if cid in shortlist_set:
+    _current_titles = df_reset["current_title"].fillna("").str.lower().tolist()
+    _text_corpuses = df_reset["text_corpus"].fillna("").str[:1000].tolist()  # cap length
+    _cids_all = df_reset["candidate_id"].tolist()
+    n_total = len(_cids_all)
+    # Scan only candidates not already in shortlist (faster loop)
+    scan_indices = [i for i, cid in enumerate(_cids_all) if cid not in shortlist_set]
+
+    for i in scan_indices:
+        # Quick title pre-filter
+        if not _PRODUCT_TITLE_KW.search(_current_titles[i] or ""):
             continue
-        cur_title = (df_reset.iloc[i].get("current_title") or "").lower()
-        if not _PRODUCT_TITLE_KW.search(cur_title):
+        # Use the pre-built text_corpus (head 1000 chars) — fast substring match
+        text = (_text_corpuses[i] or "").lower()
+        if not text:
             continue
-        # Look at last 3 career descriptions
-        career = df_reset.iloc[i].get("career")
-        if hasattr(career, "tolist"):
-            career = career.tolist() if career is not None else []
-        if not career:
+        n_ship = len(_SHIP_KW.findall(text))
+        if n_ship < 1:
             continue
-        blob = " ".join(
-            (ch.get("description") or "") + " " + (ch.get("title") or "")
-            for ch in career[-3:]
-        ).lower()
-        n_ship = len(_SHIP_KW.findall(blob))
-        n_ret = len(_RETRIEVAL_KW.findall(blob))
-        if n_ship >= 1 and n_ret >= 1:
-            score = n_ship + n_ret
-            plain_lang_candidates.append((score, cid))
+        n_ret = len(_RETRIEVAL_KW.findall(text))
+        if n_ret >= 1:
+            plain_lang_candidates.append((n_ship + n_ret, _cids_all[i]))
 
     plain_lang_candidates.sort(reverse=True)
     added = 0
@@ -215,7 +213,7 @@ def run(args) -> None:
             added += 1
     if args.verbose:
         print(f"[{time.time()-t_start:5.1f}s] +{added:,} from plain-language top-up "
-              f"(of {len(plain_lang_candidates):,} eligible)")
+              f"(of {len(plain_lang_candidates):,} eligible; scanned {len(scan_indices):,})")
 
     # 7) Build the shortlist dataframe
     shortlist_df = df_reset[df_reset["candidate_id"].isin(shortlist_set)].copy()
