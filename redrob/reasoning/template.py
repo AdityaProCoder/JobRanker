@@ -170,15 +170,43 @@ def _fmt_skill(s: str) -> str:
     return s
 
 
+def _canon_skill_local(name: str) -> str:
+    """Local alias canonicalization for the reasoning template (kept in sync
+    with redrob.features.skill_features._SKILL_ALIAS)."""
+    n = (name or "").strip().lower()
+    if not n:
+        return ""
+    # Map common variants to their canonical form
+    aliases = {
+        "pgvector": "vector database",
+        "vector search": "embeddings",
+        "semantic search": "embeddings",
+        "fine-tuning llms": "fine-tuning",
+        "llm fine-tuning": "fine-tuning",
+        "instruction tuning": "fine-tuning",
+        "search relevance": "bm25",
+        "relevance ranking": "learning to rank",
+        "sentence-transformer": "sentence transformers",
+        "sbert": "sentence transformers",
+        "dense passage retrieval": "dense retrieval",
+        "natural language processing": "nlp",
+    }
+    return aliases.get(n, n)
+
+
 def _top_skills(df_row: pd.Series, k: int = 4) -> List[str]:
-    """Top JD-aligned skills from the candidate's profile."""
+    """Top JD-aligned skills from the candidate's profile.
+
+    Uses skill-alias canonicalization so that e.g. "pgvector" matches
+    the JD's "vector database" requirement.
+    """
     skills_full = df_row.get("skills")
     if skills_full is None:
         skills_full = []
     elif hasattr(skills_full, "tolist"):
         skills_full = skills_full.tolist()
-    core_lc = {s.lower() for s in config.CORE_COMPETENCIES}
-    adj_lc = {s.lower() for s in config.ADJACENT_COMPETENCIES}
+    core_lc = {_canon_skill_local(s) for s in config.CORE_COMPETENCIES}
+    adj_lc = {_canon_skill_local(s) for s in config.ADJACENT_COMPETENCIES}
     ranked: List[tuple] = []
     for s in skills_full:
         if not isinstance(s, dict):
@@ -186,10 +214,10 @@ def _top_skills(df_row: pd.Series, k: int = 4) -> List[str]:
         n = (s.get("name") or "").strip()
         if not n:
             continue
-        nl = n.lower()
-        if nl in core_lc:
+        nl_canon = _canon_skill_local(n)
+        if nl_canon in core_lc:
             ranked.append((0, n))
-        elif nl in adj_lc:
+        elif nl_canon in adj_lc:
             ranked.append((1, n))
         else:
             prof = s.get("proficiency", "")

@@ -123,15 +123,40 @@ def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
 
     is_title_chaser = ((avg_ten_arr < 18.0) & (n_tit_arr >= 4) & (yoe_arr >= 5.0)).astype(np.float32)
 
-    # Framework enthusiast: >= 2 LangChain/LlamaIndex + low JD-core
+    # Framework enthusiast (refined by super-smart-agent review).
+    # Old rule: framework_skills >= 2 AND core_skills < 3.
+    # New rule: framework_skills >= 2 AND core_skills < 3 AND
+    #          (retrieval/eval fundamentals weak: BM25/NDCG/LtR/FAISS
+    #           count < 2) AND (production evidence < 0.3).
+    # This catches candidates with high LangChain/LlamaIndex use but
+    # without evidence of building the underlying retrieval/eval systems.
     n_core_arr_val = df["n_core_skills"].astype(float).to_numpy()
     _FW_SET = {"langchain", "llamaindex", "langgraph"}
+    _RETRIEVAL_EVAL_KW = {
+        "bm25", "faiss", "pinecone", "weaviate", "qdrant", "milvus",
+        "elasticsearch", "opensearch", "ndcg", "mrr", "map",
+        "learning to rank", "lambdarank", "sentence transformers",
+        "bge", "e5",
+    }
     fw_score = np.zeros(len(df), dtype=np.float32)
+    ret_eval_count = np.zeros(len(df), dtype=np.int32)
     for i in range(len(df)):
         skill_names = _as_list_local(df.iloc[i].get("skill_names"))
         names_lc = {(s or "").lower() for s in skill_names}
         fw_score[i] = sum(1 for nm in names_lc if nm in _FW_SET)
-    is_framework_enthusiast = ((fw_score >= 2) & (n_core_arr_val < 3)).astype(np.float32)
+        ret_eval_count[i] = sum(1 for nm in names_lc if nm in _RETRIEVAL_EVAL_KW)
+
+    # Production evidence
+    car_ev_arr = np.zeros(len(df), dtype=np.float32)
+    if "career_evidence" in df.columns:
+        car_ev_arr = df["career_evidence"].fillna(0.0).astype(float).to_numpy()
+
+    is_framework_enthusiast = (
+        (fw_score >= 2)
+        & (n_core_arr_val < 3)
+        & (ret_eval_count < 2)
+        & (car_ev_arr < 0.3)
+    ).astype(np.float32)
 
     df["is_title_chaser"] = is_title_chaser
     df["is_consulting_only"] = is_consulting_only_arr
@@ -404,6 +429,34 @@ def deterministic_score(df: pd.DataFrame) -> np.ndarray:
         s += 0.05 * (df["sparse_score"].fillna(0).astype(float).to_numpy() / 30.0)
     if "dense_score" in df.columns:
         s += 0.6 * df["dense_score"].fillna(0).astype(float).to_numpy()
+
+    # ----------------------------------------------------------------------
+    # Conservative availability penalty (added by super-smart-agent review).
+    # JD explicitly says "perfect-on-paper but inactive" candidates should
+    # be down-weighted. Apply a soft penalty only when MULTIPLE risk signals
+    # fire simultaneously — never on a single signal (too noisy).
+    # Trigger conditions: low response rate AND stale activity AND long notice.
+    # Penalty magnitudes kept small so top-10 is unaffected.
+    # ----------------------------------------------------------------------
+    try:
+        rr = df["recruit_response_rate"].fillna(0.0).astype(float).to_numpy()
+        notice = df["notice_period_days"].fillna(90).astype(float).to_numpy()
+        recency = df["recruit_recency"].fillna(0.0).astype(float).to_numpy()
+
+        # Risk flags (0/1)
+        low_rr = (rr < 0.15).astype(np.float32)         # < 15% response rate
+        stale_activity = (recency < 0.20).astype(np.float32)  # recency<0.2 means old
+        long_notice = (notice > 90).astype(np.float32)         # > 90 days notice
+
+        # Conservative: only penalise when ≥2 risk signals fire
+        n_risks = low_rr + stale_activity + long_notice
+        # 0 risks → 0, 1 risk → 0, 2 risks → 0.5, 3 risks → 1.0
+        risk_severity = np.maximum(n_risks - 1, 0) / 2.0
+        # Penalty: at most -1.5 (3 risks); only top-50 affected in practice
+        s -= 1.5 * risk_severity
+    except Exception:
+        # Be defensive — availability penalty is a soft signal, must not break ranking
+        pass
 
     return s
 

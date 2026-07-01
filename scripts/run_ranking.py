@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import pickle
+import re
 import sys
 import time
 from pathlib import Path
@@ -151,6 +152,70 @@ def run(args) -> None:
         print(f"[{time.time()-t_start:5.1f}s] +{added:,} from structured gate (total shortlist: {len(shortlist_ids):,})")
     struct_ids = df_reset.loc[gate_score > 0.0, "candidate_id"].tolist()
     gate_score_map = {cid: float(s) for cid, s in zip(df_reset["candidate_id"].tolist(), gate_score)}
+
+    # ----------------------------------------------------------------------
+    # Plain-language Tier-5 retrieval top-up (added by super-smart-agent review).
+    # Some excellent candidates don't say RAG/Pinecone in skills, but their
+    # career DESCRIPTIONS mention shipping ranking/search/recsys systems.
+    # Scan full pool for these signals and add top-K to the shortlist.
+    # ----------------------------------------------------------------------
+    _SHIP_KW = re.compile(
+        r"\b(built|shipped|launched|migrated|scaled|deployed|"
+        r"productionized|productionised|architected|owned|led|"
+        r"designed|implemented|rolled out|from zero|to millions)\b",
+        re.IGNORECASE,
+    )
+    _RETRIEVAL_KW = re.compile(
+        r"\b(matching|personalization|personalisation|marketplace ranking|"
+        r"recruiter engagement|ctr|click.?through|engagement|"
+        r"index refresh|search system|relevance|re-ranking|reranking|"
+        r"semantic|embeddings|indexing|indexed)\b",
+        re.IGNORECASE,
+    )
+    _PRODUCT_TITLE_KW = re.compile(
+        r"\b(ai engineer|machine learning engineer|ml engineer|"
+        r"applied scientist|research engineer|search engineer|"
+        r"ranking engineer|recommendation systems engineer|"
+        r"nlp engineer|data scientist|staff machine learning)\b",
+        re.IGNORECASE,
+    )
+    _PLAIN_LANG_TOPUP = 200  # how many extra candidates to add
+
+    plain_lang_candidates = []
+    for i in range(len(df_reset)):
+        # Only consider people who are NOT already in shortlist AND have a target title
+        cid = df_reset.iloc[i]["candidate_id"]
+        if cid in shortlist_set:
+            continue
+        cur_title = (df_reset.iloc[i].get("current_title") or "").lower()
+        if not _PRODUCT_TITLE_KW.search(cur_title):
+            continue
+        # Look at last 3 career descriptions
+        career = df_reset.iloc[i].get("career")
+        if hasattr(career, "tolist"):
+            career = career.tolist() if career is not None else []
+        if not career:
+            continue
+        blob = " ".join(
+            (ch.get("description") or "") + " " + (ch.get("title") or "")
+            for ch in career[-3:]
+        ).lower()
+        n_ship = len(_SHIP_KW.findall(blob))
+        n_ret = len(_RETRIEVAL_KW.findall(blob))
+        if n_ship >= 1 and n_ret >= 1:
+            score = n_ship + n_ret
+            plain_lang_candidates.append((score, cid))
+
+    plain_lang_candidates.sort(reverse=True)
+    added = 0
+    for _, cid in plain_lang_candidates[:_PLAIN_LANG_TOPUP]:
+        if cid not in shortlist_set:
+            shortlist_ids.append(cid)
+            shortlist_set.add(cid)
+            added += 1
+    if args.verbose:
+        print(f"[{time.time()-t_start:5.1f}s] +{added:,} from plain-language top-up "
+              f"(of {len(plain_lang_candidates):,} eligible)")
 
     # 7) Build the shortlist dataframe
     shortlist_df = df_reset[df_reset["candidate_id"].isin(shortlist_set)].copy()
