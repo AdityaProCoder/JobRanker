@@ -47,3 +47,7 @@ scripts/_dataset_analysis2.py
 
 # Hackathon bundle (candidates.jsonl is 487 MB; not needed in repo)
 [PUB]*/
+
+# HF Space deployment artifacts (separate repo; pushed to HF Spaces git remote)
+huggingface_space/
+
