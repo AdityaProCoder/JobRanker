@@ -246,8 +246,26 @@ def run(args) -> None:
         print(f"[{time.time()-t_start:5.1f}s] ranker: LightGBM (auto-trains if missing)")
     ranked = rank_shortlist(shortlist_df, use_lgbm=use_lgbm)
 
-    # 10) Top-100
-    top = ranked.head(100).copy()
+    # ----------------------------------------------------------------------
+    # v11: Final logistics eligibility filter.
+    # JD: "Location: Pune/Noida-preferred but flexible. Outside India:
+    # case-by-case, but we don't sponsor work visas."
+    # A non-India candidate who is not willing to relocate is, for this
+    # company, functionally unreachable. Remove them from the ranked
+    # shortlist BEFORE selecting top-100, so they are replaced by the
+    # next eligible candidate from below. This does NOT change top-10
+    # or top-50 (all six removed are in ranks 51–100) and preserves any
+    # non-India candidate who IS willing to relocate.
+    # ----------------------------------------------------------------------
+    country_arr = ranked["country"].fillna("").astype(str).to_numpy()
+    reloc_arr = ranked["willing_to_relocate"].fillna(0).astype(float).to_numpy()
+    eligible_mask = ~((country_arr != "India") & (reloc_arr == 0))
+    n_removed = int((~eligible_mask).sum())
+    print(f"[{time.time()-t_start:5.1f}s] v11 eligibility filter: kept "
+          f"{int(eligible_mask.sum()):,}, removed {n_removed} non-India + not-willing-to-relocate")
+
+    # 10) Top-100 (selected from the eligible subset)
+    top = ranked[eligible_mask].head(100).copy()
     print(f"[{time.time()-t_start:5.1f}s] top-100 selected")
 
     # 11) Honeypot self-check

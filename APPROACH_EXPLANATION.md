@@ -3,7 +3,8 @@
 **For super-smart agent review.** This document explains the full design, the engineering trade-offs, the empirical evidence behind each decision, and what we'd do next given more compute / time.
 
 **Revision history:**
-- **v10 (current):** Two-tier availability penalty + non-India + not-willing-to-relocate penalty. Top-10 unchanged, 47/50 top-50 unchanged, 99/100 top-100 unchanged. CAND_0094759 (19→33), CAND_0060072 (47→54), CAND_0092278 (90→dropped) all down-ranked. Non-India + not-willing-to-relocate candidates all moved down (e.g. CAND_0040887 60→79, CAND_0041568 73→88).
+- **v11 (current):** Final logistics eligibility filter — non-India + not-willing-to-relocate removed from the top-100 selection. Top-10/top-50 unchanged. Top-100 overlap 94/100; 6 candidates removed (CAND_0055905, CAND_0072660, CAND_0040887, CAND_0013613, CAND_0041568, CAND_0081686) and replaced by v10 ranks 101–106.
+- **v10:** Two-tier availability penalty + non-India + not-willing-to-relocate penalty. Top-10 unchanged, 47/50 top-50 unchanged, 99/100 top-100 unchanged. CAND_0094759 (19→33), CAND_0060072 (47→54), CAND_0092278 (90→dropped) all down-ranked. Non-India + not-willing-to-relocate candidates all moved down (e.g. CAND_0040887 60→79, CAND_0041568 73→88).
 - **v9:** Plain-language Tier-5 top-up optimised for runtime (402s → 63s).
 - **v8:** Post-review improvements from the super-smart agent — skill alias canonicalisation, conservative availability penalty, framework-enthusiast flag refined, plain-language Tier-5 top-up.
 - **v7:** Sr Data Scientist title weight 0.70→0.85 + 30 missing product companies (catches Microsoft/Google Sr DS w/ BM25/LtR assessments).
@@ -198,11 +199,12 @@ Each reasoning is 3–5 deterministic clauses answering a Stage 4 reviewer quest
 | Junior titles in top-100 | **0** (62 contradictions fixed) |
 | Services-only in top-50 | **0** |
 | Top-10 unique companies | Meta, Netflix, Sarvam AI, Rephrase.ai, Zomato, LinkedIn, Genpact AI, Salesforce, Apple, Niramai |
-| Non-India + not-willing-to-relocate in top-50 | **3** (down from 6 in v9) |
-| Top-10 unchanged across v8/v9/v10 | ✓ (10/10 identical) |
+| Non-India + not-willing-to-relocate in top-100 | **0** (v11 filter removed all 6) |
+| Top-10 unchanged across v8/v9/v10/v11 | ✓ (10/10 identical) |
+| Top-50 unchanged in v10/v11 | ✓ (50/50 identical) |
 | Reasoning variation (Jaccard dissimilarity) | ~0.66 |
 | Unique reasoning strings | 100/100 |
-| Pipeline runtime (no_dense + no_lgbm) | ~65 s end-to-end |
+| Pipeline runtime (no_dense + no_lgbm) | ~61 s end-to-end |
 | Pipeline runtime (warm caches, full) | ~50 s end-to-end |
 | Memory peak | ~6 GB |
 | Two consecutive runs | byte-identical CSV (only float-noise differences) |
@@ -217,6 +219,7 @@ Each reasoning is 3–5 deterministic clauses answering a Stage 4 reviewer quest
 | v7 | Sr Data Scientist 0.70→0.85, +30 product companies | catches Microsoft/Google Sr DS w/ BM25/LtR assessments |
 | v8/v9 | skill aliases + availability penalty + framework refinement + plain-lang top-up | Order changed: Meta jumped to #1, Niramai entered top-10, Haptik moved to rank 16 |
 | v10 | Tier 2 availability (low response + low recruitability) + non-India + not-willing-to-relocate penalty | Top-10 unchanged; CAND_0094759 19→33, CAND_0060072 47→54, CAND_0092278 90→dropped; 6/9 non-India candidates moved down 13–19 ranks |
+| v11 | Final logistics eligibility filter (hard remove non-India + not-willing-to-relocate) | Top-10/50 unchanged; top-100 overlap 94/100; 6 removed, 6 added (v10 ranks 101–106) |
 
 ---
 
@@ -460,9 +463,9 @@ agent. Their top 5 recommendations and our actions:
 
 ---
 
-## 16. Final note (v10)
+## 16. Final note (v11)
 
-We designed this system to win on NDCG@10 (50% of composite) by getting the best 10 candidates in the right order. The deterministic composite + LTR-tiebreak architecture is robust and explainable. Every design decision can be traced to a specific requirement in the spec. The reasoning is grounded in profile fields, not generated. The pipeline runs in **~65 seconds** and reproduces byte-identically (within float noise). We expect to score well on the qualitative Stage 4 review (reasoning quality, methodology coherence) and to clear the Stage 3 reproduction test. Whether we win Stage 2 depends on ground-truth label noise and the actual distribution of gold candidates — but our top-10 is as strong as the data allows, and v10's business-fit penalties (availability + non-India) tighten the top-50/100 without risking top-10.
+We designed this system to win on NDCG@10 (50% of composite) by getting the best 10 candidates in the right order. The deterministic composite + LTR-tiebreak architecture is robust and explainable. Every design decision can be traced to a specific requirement in the spec. The reasoning is grounded in profile fields, not generated. The pipeline runs in **~61 seconds** and reproduces byte-identically (within float noise). We expect to score well on the qualitative Stage 4 review (reasoning quality, methodology coherence) and to clear the Stage 3 reproduction test. Whether we win Stage 2 depends on ground-truth label noise and the actual distribution of gold candidates — but our top-10 is as strong as the data allows, and v11's final logistics eligibility filter (non-India + not-willing-to-relocate removed) keeps the top-50 intact and tightens the top-100 to a set that the company can actually hire from.
 
 ---
 
@@ -479,3 +482,4 @@ We designed this system to win on NDCG@10 (50% of composite) by getting the best
 | v7 → v8 | redrob/features/skill_features.py (skill aliases); redrob/rank/train.py (availability penalty, framework refinement); redrob/reasoning/template.py (alias support); scripts/run_ranking.py (plain-language top-up) |
 | v8 → v9 | scripts/run_ranking.py (top-up performance optimisation) |
 | v9 → v10 | redrob/rank/train.py (Tier 2 availability penalty + non-India + not-willing-to-relocate penalty) |
+| v10 → v11 | scripts/run_ranking.py (final logistics eligibility filter — hard remove non-India + not-willing-to-relocate) |
