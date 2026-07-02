@@ -79,10 +79,7 @@ exits non-zero if the file is invalid.
 
 ## Sandbox
 
-The `app/` directory contains a Streamlit app intended for HuggingFace
-Spaces. It runs the **complete pipeline on a small sample** (default
-200 records) and shows the top-25 and top-100 tables, charts, and a
-downloadable CSV. The sandbox is for demonstration; the official
+The Streamlit sandbox app is not in this repository. The official
 submission must be produced by `scripts/run_ranking.py` on the full
 pool.
 
@@ -99,12 +96,11 @@ redrob/                 # core package
   rank/                 # deterministic composite + LightGBM LambdaRank tiebreak
   reasoning/            # 16 rank-conditional deterministic templates
   submit/               # CSV writer + validator hook
-scripts/                # run_ranking.py, train_ranker.py, build_blueprint.py
-app/                    # Streamlit sandbox
-artifacts/              # cached parquet, BM25, dense, graph, model
+scripts/
+  run_ranking.py        # THE pipeline (the only entry point)
+artifacts/              # cached parquet, BM25, dense, graph, model (gitignored)
 submission.csv          # top-100 ranked (validator passes)
 submission_metadata.yaml  # portal metadata
-APPROACH_EXPLANATION.md  # detailed design write-up
 ```
 
 ## Compute constraints (all met)
@@ -128,8 +124,6 @@ APPROACH_EXPLANATION.md  # detailed design write-up
 - **v4/v5** — deterministic-first composite ranker with LTR as local tiebreaker
 - **v3** — multi-axis PPR (5 axes), JD-criticality skills, career-evidence score
 - **v2/v1** — baseline 9-stage pipeline
-
-Full design rationale is in `APPROACH_EXPLANATION.md`.
 
 ## License
 
