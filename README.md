@@ -77,11 +77,32 @@ python scripts/run_ranking.py           # ~18 min first run (cold caches), ~50 s
 The validator from the bundle is invoked automatically; the script
 exits non-zero if the file is invalid.
 
-## Sandbox
+## Sandbox (Stage 1 requirement)
 
-The Streamlit sandbox app is not in this repository. The official
-submission must be produced by `scripts/run_ranking.py` on the full
-pool.
+The hackathon spec (Section 10.5) requires a working hosted sandbox
+where organizers can verify the ranking system runs reproducibly. We
+include a **Streamlit app** at `app/app.py` that can be deployed to
+either:
+
+- **Streamlit Cloud** (free tier, recommended): connect this GitHub
+  repo, point at `app/app.py`, deploy. URL becomes the `sandbox_link`
+  in `submission_metadata.yaml`.
+- **HuggingFace Spaces**: copy `app/app.py` into a new Space with
+  Streamlit SDK.
+- **Or** a self-contained `docker run` recipe, Colab notebook, etc.
+  (see spec Section 10.5 for the full list of accepted platforms).
+
+The sandbox runs the **complete pipeline** (BM25 + graph + features +
+deterministic composite + reasoning) on a user-uploaded sample. It
+must accept a candidate sample (≤100 records), rank end-to-end, and
+produce a downloadable CSV within the 5-min CPU budget.
+
+**Deployment checklist (for the user):**
+1. Deploy `app/app.py` to Streamlit Cloud or HF Spaces.
+2. Verify the deployed URL works.
+3. Update `sandbox_link` in `submission_metadata.yaml` with the
+   real deployed URL.
+4. Submit the metadata.
 
 ## Project layout
 
@@ -97,7 +118,11 @@ redrob/                 # core package
   reasoning/            # 16 rank-conditional deterministic templates
   submit/               # CSV writer + validator hook
 scripts/
-  run_ranking.py        # THE pipeline (the only entry point)
+  run_ranking.py        # THE pipeline (the official reproduce cmd)
+app/
+  app.py                # Streamlit sandbox (Stage 1 sandbox requirement)
+.streamlit/
+  config.toml           # Streamlit theme + server config
 artifacts/              # cached parquet, BM25, dense, graph, model (gitignored)
 submission.csv          # top-100 ranked (validator passes)
 submission_metadata.yaml  # portal metadata

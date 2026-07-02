@@ -12,7 +12,9 @@ team_members:
     role: "Data Engineer"
 
 github_repo: "https://github.com/AdityaProCoder/JobRanker"
-sandbox_link: "https://huggingface.co/spaces/AdityaProCoder/redrob-ranker"
+# Stage 1 sandbox (required by spec Section 10.5).
+# Deploy app/app.py to Streamlit Cloud or HF Spaces, then update this URL.
+sandbox_link: "https://share.streamlit.io/AdityaProCoder/JobRanker/main/app/app.py"
 reproduce_command: "python scripts/run_ranking.py --no_dense --no_lgbm"
 
 compute:
