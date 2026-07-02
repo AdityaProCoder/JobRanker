@@ -11,8 +11,8 @@ team_members:
     email: "data@example.com"
     role: "Data Engineer"
 
-github_repo: "https://github.com/your-org/redrob-candidate-intelligence"
-sandbox_link: "https://huggingface.co/spaces/your-org/redrob-ranker"
+github_repo: "https://github.com/AdityaProCoder/JobRanker"
+sandbox_link: "https://huggingface.co/spaces/AdityaProCoder/redrob-ranker"
 reproduce_command: "python scripts/run_ranking.py --no_dense --no_lgbm"
 
 compute:
@@ -41,14 +41,20 @@ methodology_summary: |
   by Reciprocal Rank Fusion over a structured high-recall gate.
   Heterogeneous graph (candidate-skill-title-company-industry) with
   personalised PageRank over JD seeds and skill-community features.
+  Multi-axis PageRank (5 specialised seed sets: applied_ml,
+  retrieval_rank, nlp_llm, production_eng, product_company).
   23 Redrob behavioral signals combined into a recruitability score.
-  Ten explicit honeypot rules including title-skill contradictions.
-  Graduated title-fit with heavy penalty for non-engineering
-  titles. LightGBM LambdaRank ranker trained on transparent weak
-  labels, with a deterministic scorer as a robust fallback.
-  Deterministic evidence-driven reasoning templates; no LLM at
-  submission time. End-to-end runs in <=2 minutes on CPU with 16GB
-  RAM and no network.
+  74-feature frame feeding a deterministic composite scorer with
+  LightGBM LambdaRank as local tiebreaker only. 11 explicit honeypot
+  rules incl. behavioural twins. Skill alias canonicalisation
+  (~50 variants to ~30 canonical names). Graduated title-fit with
+  heavy penalty for non-engineering titles. Conservative
+  availability penalty (2-of-3 risk signals). Final v11 logistics
+  eligibility filter removes non-India + not-willing-to-relocate
+  candidates from the top-100 selection. Deterministic
+  evidence-driven reasoning templates; no LLM at submission time.
+  End-to-end runs in ~60 seconds on CPU with 16GB RAM and no network
+  (proven safe command: --no_dense --no_lgbm).
 
 declarations:
   read_submission_spec: true

@@ -1,82 +1,78 @@
 # Redrob Candidate Intelligence Engine
 
 This repository contains the implementation of a candidate discovery and
-ranking system for the Redrob India Runs Data & AI Challenge.
-
-## What it does
+ranking system for the **Redrob India Runs Data & AI Challenge**.
 
 Given a 100,000-candidate pool and a job description for a **Senior AI
-Engineer** (Redrob AI's founding team), the system produces a top-100
-ranked shortlist with a per-candidate recruiter-style reasoning
-explanation. The pipeline is:
+Engineer** (Redrob AI's founding team, Pune/Noida, 5–9 yrs), the system
+produces a top-100 ranked shortlist with a per-candidate recruiter-style
+reasoning explanation.
 
-1. **Role Blueprint Generator** — extracts and persists the hiring
-   intent (core competencies, target titles, seniority band,
-   constraints) from the job description.
-2. **Candidate Canonicalisation** — streams the 487 MB JSONL, parses
-   and normalises every record, and writes a compact parquet cache.
-3. **Hybrid Candidate Discovery**:
-   * BM25 (sparse) over the 100k corpus.
-   * Local sentence-transformers (dense) — model name is
-     configurable via `REDROB_DENSE_MODEL`; default is
-     `sentence-transformers/all-MiniLM-L6-v2`, with BGE variants
-     supported when cached locally.
-   * Structured high-recall gate (soft, not exclusion) keeps adjacent
-     candidates like Search/Relevance Engineers in the pool.
-   * Reciprocal Rank Fusion produces a top-N shortlist.
-4. **Graph Intelligence** — heterogeneous graph
-   (candidate-skill-title-company-industry) with personalised
-   PageRank from JD-skill seeds, skill community purity, skill
-   rarity, career coherence, and graph degree.
-5. **Behavioral Intelligence** — 23 Redrob signals are folded into a
-   single recruitability score (open-to-work, response rate,
-   verification, recency, notice period, etc.).
-6. **Honeypot Detection** — ten explicit rules including a
-   title–skill contradiction detector (advanced AI skills but
-   non-engineering career history).
-7. **Learning-to-Rank** — LightGBM LambdaRank trained on the full
-   pool using transparent weak labels. A deterministic scoring
-   function is also implemented as a robust fallback.
-8. **Reasoning Generator** — deterministic, evidence-driven
-   template-based strings; no LLM at submission time.
-9. **Submission Writer** — strict 100-row CSV with monotonically
-   non-increasing scores, ties broken by `candidate_id` ascending;
-   the bundled validator is invoked as the final step.
+## Final result (v11)
+
+* **Validator**: `Submission is valid.`
+* **Top-10 unchanged** across the last 4 iterations (v8 → v11)
+* **Top-50 unchanged** across v10 → v11
+* **0 honeypots / 0 junior / 0 non-engineering / 0 services-only in top-50**
+* **100/100 unique reasoning strings**
+* **Pipeline runtime: ~60 s** end-to-end on CPU, no network during ranking
+* **Memory peak: ~6 GB** (≤16 GB budget)
+* **Reproducibility**: byte-identical CSV (only float noise) across runs
+
+## Architecture (single-command, byte-identical)
+
+1. **Retrieval** — 100k → 6k shortlist
+   * BM25 unigrams (rank_bm25) — top-3000 per query term
+   * sentence-transformers MiniLM-L6, 384-dim, L2-normalised (optional)
+   * Soft structured-gate: `min(1, hits/5)` on text, `hits/3` on skills
+   * Per-channel weighted RRF: BM25 ×1.2, dense ×0.8, K=60
+   * Plain-language Tier-5 top-up: +200 candidates max
+
+2. **Graph** — 100k nodes, 1.7M edges
+   * Edges: `has_skill`, `held_title`, `worked_at`, `in_industry`, skill-cooccurrence
+   * **5-axis PageRank** (specialised seeds): `applied_ml`, `retrieval_rank`, `nlp_llm`, `production_eng`, `product_company`
+   * Career-evidence: ship verbs + retrieval keywords in career descriptions
+   * Skill-community purity via Louvain on skill-skill subgraph
+
+3. **Ranking** — 6k shortlist → top-100
+   * **74-feature frame**: retrieval (4) + graph (15) + skills (16) + title (10) + behavioural (11) + honeypot (11) + seniority/geo (7+)
+   * **Deterministic composite scorer** (primary signal)
+   * **LightGBM LambdaRank**, 600 trees (local tiebreak only, Δ < 0.15)
+   * **11 honeypot rules** including behavioural twins (530 dup keys); hard-exclude at penalty ≥ 0.5
+   * **v11 logistics eligibility filter**: hard-remove `country != "India" AND willing_to_relocate == False` from top-100 selection (preserves non-India + willing-to-relocate)
+
+4. **Reasoning** — deterministic 5-clause template (WHO, CAREER EVIDENCE, JD MAPPING, ASSESSMENT, LOCATION+NOTICE, CONCERNS). Every claim sourced from a profile field. No LLM at ranking time.
 
 ## Reproducing the submission
 
 ```bash
 # from the repository root, with the venv activated
 python scripts/run_ranking.py --no_dense --no_lgbm
-# Wall-clock: ~58.6 s end-to-end on CPU, no network
-# Produces top-100 with byte-identical candidate order to submission.csv
-# (scores differ only by tiny float noise; reasoning strings match exactly).
 ```
 
-This is the proven safe reproduction command. It uses the deterministic
-composite scorer (no LightGBM rerank — the LTR model is empirically only
-a tiebreaker and the deterministic composite produces the same top-100).
-The dense encoder is skipped (no network, faster; the deterministic
-composite already dominates).
+* **Wall-clock: ~60 s** end-to-end on CPU, no network
+* Produces top-100 with byte-identical candidate order to `submission.csv` (scores differ only by tiny float noise; reasoning strings match exactly)
+* The dense encoder is skipped (no network, faster; the deterministic composite already dominates)
+* The LightGBM ranker is skipped (LTR was empirically only a tiebreaker; the deterministic composite produces the same top-100)
 
-If you want the full pipeline with dense embeddings and LTR rerank:
+For the full pipeline with dense embeddings and LTR rerank (longer first run):
 
 ```bash
-python scripts/run_ranking.py           # ~18 min first run (cold caches)
-python scripts/run_ranking.py           # ~50 s on subsequent runs (warm)
+python scripts/run_ranking.py           # ~18 min first run (cold caches), ~50 s on subsequent runs
 ```
 
-The command:
+## What the pipeline does (in order)
 
-* Streams `candidates.jsonl` (~12 s).
-* Builds / loads the BM25 index (~16 s on first run, ~4 s cached).
-* Optionally builds the dense embedding matrix
-  (`artifacts/dense_index.npy`, ~150 MB).
-* Computes the heterogeneous graph and PageRank over the 100k
-  pool (~14 s).
-* Trains the LightGBM ranker on the full pool with weak labels
-  (~50 s, only on first run).
-* Scores the top-100 and writes `submission.csv`.
+* Streams `candidates.jsonl` (~12 s first time, ~8 s cached)
+* Builds / loads the BM25 index (~16 s on first run, ~4 s cached)
+* Computes structured-gate score over all 100k candidates (~10 s)
+* Fuses BM25 + dense + structured-gate via weighted RRF → 6k shortlist
+* Builds the heterogeneous graph (1.7M edges) and 5-axis PageRank (~14 s; cached)
+* Builds a 74-feature frame for the 6k shortlist (~3 s)
+* Scores with deterministic composite + LTR tiebreak (<1 s)
+* Applies v11 logistics eligibility filter
+* Generates 5-clause reasoning for top-100
+* Writes `submission.csv` and runs the bundled validator
 
 The validator from the bundle is invoked automatically; the script
 exits non-zero if the file is invalid.
@@ -94,26 +90,46 @@ pool.
 
 ```
 redrob/                 # core package
-  config.py             # paths, blueprint, hyper-parameters
-  blueprint.py          # role blueprint
+  config.py             # paths, blueprint, hyper-parameters, company tiers
+  blueprint.py          # role blueprint extractor
   data.py               # streaming JSONL canonicalisation
-  retrieval/            # BM25 + dense + RRF
-  graph/                # heterogeneous graph + PPR + coherence
-  features/             # title, behavioral, honeypot, skill
-  rank/                 # LightGBM LambdaRank + deterministic fallback
-  reasoning/            # deterministic template reasoning
+  retrieval/            # BM25 + dense + weighted RRF
+  graph/                # heterogeneous graph + 5-axis PPR + Louvain
+  features/             # title, behavioral, honeypot (11 rules), skill (aliases)
+  rank/                 # deterministic composite + LightGBM LambdaRank tiebreak
+  reasoning/            # 16 rank-conditional deterministic templates
   submit/               # CSV writer + validator hook
 scripts/                # run_ranking.py, train_ranker.py, build_blueprint.py
 app/                    # Streamlit sandbox
 artifacts/              # cached parquet, BM25, dense, graph, model
+submission.csv          # top-100 ranked (validator passes)
+submission_metadata.yaml  # portal metadata
+APPROACH_EXPLANATION.md  # detailed design write-up
 ```
 
-## Compute constraints
+## Compute constraints (all met)
 
-The full pipeline runs end-to-end in **≤2 minutes** on a 4-core CPU
-with 16 GB RAM, no GPU, no network (after the first-time model
-download). The fallback path (BM25-only, deterministic scorer)
-finishes in **~90 seconds**.
+| Constraint | Budget | Actual |
+|---|---|---|
+| Wall-clock | ≤ 5 min | **~60 s** (no_dense + no_lgbm) |
+| Memory | ≤ 16 GB | **~6 GB** |
+| Compute | CPU only | CPU only ✓ |
+| Network during ranking | Off | Off ✓ |
+| Disk | ≤ 5 GB | ~1.5 GB |
+| GPU | Forbidden | None ✓ |
+
+## Version history (brief)
+
+- **v11** (current) — final logistics eligibility filter. Top-10/50 unchanged, top-100 overlap 94/100.
+- **v10** — Tier 2 availability (low response + low recruitability) + non-India + not-willing-to-relocate penalty
+- **v8/v9** — skill alias canonicalisation, conservative availability penalty, framework refinement, plain-language Tier-5 top-up (optimised 402s → 63s)
+- **v7** — Sr Data Scientist title weight 0.70→0.85 + 30 missing product companies
+- **v6** — rich JD-specific reasoning with career-evidence, geo+notice, Redrob assessment context
+- **v4/v5** — deterministic-first composite ranker with LTR as local tiebreaker
+- **v3** — multi-axis PPR (5 axes), JD-criticality skills, career-evidence score
+- **v2/v1** — baseline 9-stage pipeline
+
+Full design rationale is in `APPROACH_EXPLANATION.md`.
 
 ## License
 

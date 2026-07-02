@@ -44,3 +44,6 @@ scripts/_check_importance.py
 scripts/_diagnose_missing.py
 scripts/_dataset_analysis.py
 scripts/_dataset_analysis2.py
+
+# Hackathon bundle (candidates.jsonl is 487 MB; not needed in repo)
+[PUB]*/
