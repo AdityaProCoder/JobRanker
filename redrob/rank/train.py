@@ -438,6 +438,9 @@ def deterministic_score(df: pd.DataFrame) -> np.ndarray:
     # Trigger conditions: low response rate AND stale activity AND long notice.
     # Penalty magnitudes kept small so top-10 is unaffected.
     # ----------------------------------------------------------------------
+    # v10: Added Tier 2 (low response + low recruitability) to catch the
+    # "strong profile but actively unreachable" archetype that Tier 1 misses
+    # when recency/notice happen to be OK on paper.
     try:
         rr = df["recruit_response_rate"].fillna(0.0).astype(float).to_numpy()
         notice = df["notice_period_days"].fillna(90).astype(float).to_numpy()
@@ -454,8 +457,35 @@ def deterministic_score(df: pd.DataFrame) -> np.ndarray:
         risk_severity = np.maximum(n_risks - 1, 0) / 2.0
         # Penalty: at most -1.5 (3 risks); only top-50 affected in practice
         s -= 1.5 * risk_severity
+
+        # v10 Tier 2: low response + low recruitability composite. This is a
+        # SINGLE-signal rule but is the most informative single signal — the
+        # recruitability composite already aggregates response+notice+recency,
+        # so low recruitability + low response together is a clear "unreachable"
+        # signal. Magnitude 0.4 keeps it additive (won't dethrone top-10, which
+        # all have response > 0.15 and recruitability > 0.50).
+        if "recruitability" in df.columns:
+            rec = df["recruitability"].fillna(0.5).astype(float).to_numpy()
+            bad_contact = ((rr < 0.15) & (rec < 0.50)).astype(np.float32)
+            s -= 0.4 * bad_contact
     except Exception:
         # Be defensive — availability penalty is a soft signal, must not break ranking
+        pass
+
+    # ----------------------------------------------------------------------
+    # v10: Non-India + not-willing-to-relocate penalty.
+    # JD says India preferred, outside India is case-by-case, no visa
+    # sponsorship. Not a hard exclusion (case-by-case), but a moderate penalty
+    # so they don't outrank India-based candidates with comparable profiles.
+    # Magnitude 0.5 ≈ 2-3 ranks of typical gap; leaves top-10 unchanged
+    # (all top-10 are India-based).
+    # ----------------------------------------------------------------------
+    try:
+        country_arr = df["country"].fillna("").astype(str).to_numpy()
+        reloc = df["willing_to_relocate"].fillna(0).astype(float).to_numpy()
+        non_india_no_reloc = ((country_arr != "India") & (reloc == 0)).astype(np.float32)
+        s -= 0.5 * non_india_no_reloc
+    except Exception:
         pass
 
     return s

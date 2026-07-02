@@ -47,9 +47,23 @@ explanation. The pipeline is:
 
 ```bash
 # from the repository root, with the venv activated
-python scripts/run_ranking.py --no_dense
-# or with the dense path enabled (slower first run, faster subsequent):
-python scripts/run_ranking.py
+python scripts/run_ranking.py --no_dense --no_lgbm
+# Wall-clock: ~58.6 s end-to-end on CPU, no network
+# Produces top-100 with byte-identical candidate order to submission.csv
+# (scores differ only by tiny float noise; reasoning strings match exactly).
+```
+
+This is the proven safe reproduction command. It uses the deterministic
+composite scorer (no LightGBM rerank — the LTR model is empirically only
+a tiebreaker and the deterministic composite produces the same top-100).
+The dense encoder is skipped (no network, faster; the deterministic
+composite already dominates).
+
+If you want the full pipeline with dense embeddings and LTR rerank:
+
+```bash
+python scripts/run_ranking.py           # ~18 min first run (cold caches)
+python scripts/run_ranking.py           # ~50 s on subsequent runs (warm)
 ```
 
 The command:

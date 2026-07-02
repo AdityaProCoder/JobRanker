@@ -13,7 +13,7 @@ team_members:
 
 github_repo: "https://github.com/your-org/redrob-candidate-intelligence"
 sandbox_link: "https://huggingface.co/spaces/your-org/redrob-ranker"
-reproduce_command: "python scripts/run_ranking.py"
+reproduce_command: "python scripts/run_ranking.py --no_dense --no_lgbm"
 
 compute:
   platform: "Local Linux box"
