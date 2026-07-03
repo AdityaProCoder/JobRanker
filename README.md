@@ -8,6 +8,13 @@ Engineer** (Redrob AI's founding team, Pune/Noida, 5–9 yrs), the system
 produces a top-100 ranked shortlist with a per-candidate recruiter-style
 reasoning explanation.
 
+## Live demo / sandbox
+
+> **HF Space (Docker SDK)**: https://huggingface.co/spaces/zeusAdi/RedrobJobRanker
+> Hosted sandbox for Stage-1 review (spec Section 10.5). Upload any
+> candidate sample (jsonl or json), click "Run ranking pipeline",
+> download the ranked CSV.
+
 ## Final result (v11)
 
 * **Validator**: `Submission is valid.`
@@ -77,32 +84,20 @@ python scripts/run_ranking.py           # ~18 min first run (cold caches), ~50 s
 The validator from the bundle is invoked automatically; the script
 exits non-zero if the file is invalid.
 
-## Sandbox (Stage 1 requirement)
+## Sandbox (Stage 1 requirement) — DEPLOYED ✓
 
-The hackathon spec (Section 10.5) requires a working hosted sandbox
-where organizers can verify the ranking system runs reproducibly. We
-include a **Streamlit app** at `app/app.py` that can be deployed to
-either:
+The hackathon spec (Section 10.5) requires a working hosted sandbox.
+We have a **live, running** Streamlit app deployed to HuggingFace Spaces
+via Docker SDK:
 
-- **Streamlit Cloud** (free tier, recommended): connect this GitHub
-  repo, point at `app/app.py`, deploy. URL becomes the `sandbox_link`
-  in `submission_metadata.yaml`.
-- **HuggingFace Spaces**: copy `app/app.py` into a new Space with
-  Streamlit SDK.
-- **Or** a self-contained `docker run` recipe, Colab notebook, etc.
-  (see spec Section 10.5 for the full list of accepted platforms).
+- **URL**: https://huggingface.co/spaces/zeusAdi/RedrobJobRanker
+- **Mode**: Docker (Python 3.11-slim + Streamlit)
+- **Source**: see `huggingface_space/` (separate directory for HF deployment;
+  gitignored from main repo)
 
-The sandbox runs the **complete pipeline** (BM25 + graph + features +
-deterministic composite + reasoning) on a user-uploaded sample. It
-must accept a candidate sample (≤100 records), rank end-to-end, and
-produce a downloadable CSV within the 5-min CPU budget.
-
-**Deployment checklist (for the user):**
-1. Deploy `app/app.py` to Streamlit Cloud or HF Spaces.
-2. Verify the deployed URL works.
-3. Update `sandbox_link` in `submission_metadata.yaml` with the
-   real deployed URL.
-4. Submit the metadata.
+The local copy of the Streamlit app lives at `app/app.py` and can be
+run locally with `streamlit run app.py`. It's uploaded to HF Space as a
+self-contained bundle (Dockerfile + app.py + redrob/ + requirements.txt).
 
 ## Project layout
 
